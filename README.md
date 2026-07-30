@@ -1,0 +1,1 @@
+This project is designed to be my proper introduction to nitty gritty of Backend Development in GOLang, an amazing language made by 3 amazing people. As someone said it, "The more I look at GO, the more I want to write GO". I plan to follow Let's GO by Alex Edwards as a reference to pick this amazing Language. 
