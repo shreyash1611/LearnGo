@@ -20,29 +20,49 @@ import (
 // func(...) { ... }                   ← your handler body
 // "Hello, World!"                     ← your response text
 // nil                                 ← language built-in value
+
+
+func notfound(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "404 Page Not LOL Found",http.StatusNotFound)
+}
+// http.HandleFunc("/", ...)           // registers on the *default* global mux
+// http.ListenAndServe(":4000", nil)   // nil = use that default mux
 func home(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		notfound(w, r)
 		return
 	}
-	
 	w.Write([]byte("Hello From Snippetbox!"))
+
 }
-func notfound(w http.ResponseWriter, r *http.Request) {
-	
-	http.Error(w, "404 Page Not LOL Found",http.StatusNotFound)
-}
-// http.HandleFunc("/", ...)           // registers on the *default* global mux
-// http.ListenAndServe(":4000", nil)   // nil = use that default mux
 
 
+func snippetView(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(405)
+		w.Write([]byte("Method Not Allowed"))
+		return
+	}
+	w.WriteHeader(200)
+	w.Write([]byte("Viewing a snippet"))
+}
+
+func snippetCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		notfound(w, r)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write([]byte("Creating a snippet"))
+}
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", home) // we define what we want the handler to do when the user visits home
-	
+	homemux:= http.NewServeMux()
+	homemux.HandleFunc("/{$}", home) // we define what we want the handler to do when the user visits home
+	homemux.HandleFunc("/snippet/view", snippetView)
+	homemux.HandleFunc("/snippet/create", snippetCreate)
 	log.Println("Starting server on :4000")
-	err := http.ListenAndServe(":4000", mux)
+	err := http.ListenAndServe(":4000", homemux)
 	
 	log.Fatal(err)
 	
