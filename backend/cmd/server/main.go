@@ -25,13 +25,15 @@ import (
 func notfound(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "404 Page Not LOL Found",http.StatusNotFound)
 }
+
+func wrongMethod(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "405 METHOD NOT ALLOWED FOR THIS ENDPOINT",http.StatusMethodNotAllowed)
+}
+
 // http.HandleFunc("/", ...)           // registers on the *default* global mux
 // http.ListenAndServe(":4000", nil)   // nil = use that default mux
 func home(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		notfound(w, r)
-		return
-	}
+	
 	w.Write([]byte("Hello From Snippetbox!"))
 
 }
@@ -39,6 +41,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 
 func snippetView(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
+		w.Header().Set("Allow", "GET")
 		w.WriteHeader(405)
 		w.Write([]byte("Method Not Allowed"))
 		return
@@ -49,7 +52,9 @@ func snippetView(w http.ResponseWriter, r *http.Request) {
 
 func snippetCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		notfound(w, r)
+		w.Header().Set("Allow", "POST")
+		// w.Write([]byte("Method Not Allowed"))
+		wrongMethod(w, r)
 		return
 	}
 	w.WriteHeader(200)
