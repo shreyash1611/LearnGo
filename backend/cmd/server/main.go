@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
-	// "fmt"
+	"fmt"
 	"strconv"
 )
 
@@ -43,20 +43,21 @@ func home(w http.ResponseWriter, r *http.Request) {
 
 
 func snippetView(w http.ResponseWriter, r *http.Request) {
-	
-	id, err := strconv.Atoi(r.URL.Query().Get("id"))
-	if err != nil || id < 0 { // we only want no errors or real numbers
-		notfound(w, r)
-		return
-	}
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
 		w.WriteHeader(405)
 		w.Write([]byte("Method Not Allowed"))
 		return
 	}
-	w.WriteHeader(200)
-	w.Write([]byte("Viewing a valid snippet with id: " + strconv.Itoa(id)))
+	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil || id < 0 { // we only want no errors or real numbers
+		notfound(w, r)
+		return
+	}
+	
+	w.WriteHeader(200)//
+	//w.Write([]byte("Viewing a valid snippet with id: " + strconv.Itoa(id)))
+	fmt.Fprintf(w, "Viewing a valid snippet with id: %d", id)
 }
 
 func snippetCreate(w http.ResponseWriter, r *http.Request) {
