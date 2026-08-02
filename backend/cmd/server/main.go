@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+	// "fmt"
+	"strconv"
 )
 
 // package main                        ← keyword + special name
@@ -27,7 +29,8 @@ func notfound(w http.ResponseWriter, r *http.Request) {
 }
 
 func wrongMethod(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "405 METHOD NOT ALLOWED FOR THIS ENDPOINT",http.StatusMethodNotAllowed)
+	w.WriteHeader(405)
+	w.Write([]byte("Method Not Allowed by shreyash"))
 }
 
 // http.HandleFunc("/", ...)           // registers on the *default* global mux
@@ -40,6 +43,12 @@ func home(w http.ResponseWriter, r *http.Request) {
 
 
 func snippetView(w http.ResponseWriter, r *http.Request) {
+	
+	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil || id < 0 { // we only want no errors or real numbers
+		notfound(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
 		w.WriteHeader(405)
@@ -47,7 +56,7 @@ func snippetView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(200)
-	w.Write([]byte("Viewing a snippet"))
+	w.Write([]byte("Viewing a valid snippet with id: " + strconv.Itoa(id)))
 }
 
 func snippetCreate(w http.ResponseWriter, r *http.Request) {
