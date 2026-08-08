@@ -98,10 +98,40 @@ Request headers → `r.Header`. Response headers → `w.Header()`.
 
 ---
 
+## Project layout & `internal` (see Notes: STRUCTURING THE FILES)
+
+Typical shape for this project:
+
+```text
+backend/                 ← module root (go.mod → module learngo)
+  cmd/
+    web/                 ← package main; go run ./cmd/web
+      main.go
+      handlers.go
+  internal/              ← private packages (when the book adds them)
+    models/
+```
+
+| Folder | Role |
+|--------|------|
+| `cmd/web` | The app you run (`main`) |
+| `internal/...` | Shared code only **this** project should import |
+
+**Go rule:** any package under `internal` can only be imported by code in the **parent** of that `internal` directory (here: under `backend/`). Other modules/projects cannot `import "learngo/internal/..."`.
+
+```text
+other projects  --✗-->  learngo/internal/...
+cmd/web         --✓-->  learngo/internal/...
+```
+
+Also: `main.go` + `handlers.go` are one package — use `go run .` from `cmd/web` (or `go run ./cmd/web` from `backend/`).
+
+---
+
 ## Handy curls
 
 ```bash
-cd backend && go run ./cmd/server
+cd backend && go run ./cmd/web
 curl -i http://localhost:4000/
 curl -i http://localhost:4000/snippet/view
 curl -i -X POST http://localhost:4000/snippet/create

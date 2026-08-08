@@ -1,3 +1,9 @@
+# IMPORTANT — ListenAndServe blocks
+- `http.ListenAndServe` starts the server and **does not return** under normal use.
+- Any `HandleFunc` / setup lines **below** it in `main` never run.
+- Always: create mux → register routes → then `ListenAndServe`.
+- If you see Go's default `404 page not found` for every URL, you probably registered routes after listen (empty mux).
+
 # Handlers- These handlers are designed to work as a functional listener, or a function
 
 -Like if a Client Sends a Request
@@ -42,3 +48,9 @@
 
 2a- Headers are map of string vectors or rather header := map string[]. add adds as a new value to the key, whereas set makes it all in 1 string and adds as is. 
 2b.HTTP treats header names as case-insensitive: content-type, Content-Type, CONTENT-TYPE-Those are the same header. But a Go map is case-sensitive — "content-type" and "Content-Type" would be two different keys if nothing cleaned them up.Canocalization basically standardises it.
+
+
+# STRUCTURING THE FILES
+- We split the app top-down: `cmd/` = runnable programs, `internal/` = private project packages.
+- `internal` is special in Go: packages under it can ONLY be imported by code inside the parent of that `internal` folder (for us: inside `backend/` / our module). Outside projects cannot import them.
+- Same-folder files in `package main` (e.g. `main.go` + `handlers.go`) see each other automatically — run with `go run .`, not `go run main.go`.

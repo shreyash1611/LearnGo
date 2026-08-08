@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SignatureIdea — what your Go calls actually do</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --paper: #fafaf9;
+      --card: #ffffff;
+      --accent: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      font-size: 1.125rem;
+      line-height: 1.65;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    main {
+      max-width: 38rem;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 4rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.35rem;
+    }
+    .lede {
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin: 0 0 2rem;
+    }
+    h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin: 2.25rem 0 0.75rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--line);
+    }
+    p { margin: 0 0 1rem; }
+    ol, ul { margin: 0 0 1rem; padding-left: 1.25rem; }
+    li { margin-bottom: 0.45rem; }
+    .callout {
+      background: var(--card);
+      border-left: 3px solid var(--accent);
+      padding: 0.85rem 1rem;
+      margin: 1.25rem 0;
+    }
+    .callout p { margin: 0; }
+    .name {
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.92em;
+      color: var(--accent);
+    }
+    dl {
+      margin: 0;
+    }
+    dt {
+      font-weight: 600;
+      margin-top: 1.1rem;
+    }
+    dd {
+      margin: 0.25rem 0 0;
+      color: var(--muted);
+    }
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SignatureIdea</h1>
+    <p class="lede">
+      Not an API manual. A walk through what happens when someone hits your
+      Snippetbox app — and what each built-in call is doing along the way.
+    </p>
+
+    <h2>The only rule that keeps confusing you</h2>
+    <p>
+      Every function tells you how to trust it by what it returns.
+    </p>
+    <ul>
+      <li>Returns <strong>only an error</strong> → if the error is empty (nil), it worked. That’s the whole check. (<span class="name">Execute</span> is like this.)</li>
+      <li>Returns <strong>a value and an error</strong> → check the error, then decide if the value is acceptable. (<span class="name">Atoi</span> is like this.)</li>
+      <li>Returns <strong>nothing</strong> → it just does a side job: set a header, register a route, print a log line.</li>
+    </ul>
+
+    <h2>Act 1 — Your program wakes up</h2>
+    <p>
+      In <span class="name">main</span>, you build a router with
+      <span class="name">NewServeMux</span>. That gives you an empty
+      “phone book” of paths.
+    </p>
+    <p>
+      <span class="name">HandleFunc</span> adds entries to that book:
+      “when the path is this, call that function.” It doesn’t answer browsers
+      itself. It returns nothing.
+    </p>
+    <p>
+      <span class="name">ListenAndServe</span> opens the door on port 4000
+      and waits forever. You only get an error back if the door won’t open
+      (port busy, etc.). <span class="name">log.Println</span> is just you
+      talking to the terminal; <span class="name">log.Fatal</span> talks
+      and then kills the program.
+    </p>
+
+    <h2>Act 2 — A request arrives</h2>
+    <p>
+      Someone visits a URL. Go fills in <span class="name">r</span> (the request)
+      and gives you <span class="name">w</span> (the blank reply form).
+    </p>
+    <p>
+      The mux looks at the <strong>path only</strong>
+      (<span class="name">/snippet/view</span>). Everything after
+      <strong>?</strong> is ignored by the router. That’s why you never
+      registered <span class="name">id</span> on the mux.
+    </p>
+    <p>
+      Your handler runs. <span class="name">r.Method</span> is a plain string
+      field — GET, POST, and so on. No function call.
+    </p>
+    <p>
+      For the id, you ask the URL’s query string:
+      <span class="name">r.URL.Query().Get("id")</span>.
+      That always gives a string. Missing id → empty string, not an error.
+      Then <span class="name">Atoi</span> tries to turn that string into a
+      number. Bad text → error. Good number that’s still useless (zero,
+      negative) → you reject it yourself.
+    </p>
+
+    <h2>Act 3 — You write the reply</h2>
+    <p>
+      Think of the reply as a package:
+    </p>
+    <ol>
+      <li><strong>Labels on the box</strong> — headers via <span class="name">w.Header().Set(...)</span></li>
+      <li><strong>Stamp</strong> — status via <span class="name">WriteHeader</span> (200, 404, 405…)</li>
+      <li><strong>What’s inside</strong> — body via <span class="name">Write</span> or <span class="name">Fprintf</span></li>
+    </ol>
+    <div class="callout">
+      <p>
+        Once you stamp or put something in the box, you can’t change the labels
+        anymore. Set headers first.
+      </p>
+    </div>
+    <p>
+      <span class="name">http.Error</span> is a shortcut: it stamps an error
+      status and writes a plain-text message for you. Returns nothing.
+      It also forces the content type to plain text — so don’t expect JSON
+      after calling it.
+    </p>
+
+    <h2>Act 4 — Home page with a template</h2>
+    <p>
+      <span class="name">ParseFiles</span> reads your
+      <span class="name">.tmpl</span> file from disk. You get a template
+      object <em>and</em> an error (file missing, etc.).
+    </p>
+    <p>
+      <span class="name">Execute</span> pours that template into
+      <span class="name">w</span>. It only returns an error. There is no
+      second “did it look valid?” value — the HTML either got written or it
+      didn’t. That’s why the book only checks <span class="name">err</span>.
+    </p>
+
+    <h2>Pocket glossary</h2>
+    <dl>
+      <dt>w — ResponseWriter</dt>
+      <dd>The reply you’re building for the client.</dd>
+      <dt>r — Request</dt>
+      <dd>What the client sent (method, path, query, body).</dd>
+      <dt>mux — ServeMux</dt>
+      <dd>Path → handler phone book.</dd>
+      <dt>Template</dt>
+      <dd>Parsed HTML file ready to fill and send.</dd>
+    </dl>
+
+    <footer>
+      Open this file in a browser for easy reading.
+      Pair with Notes.md and HTTP-EXPLAINED.md when you want more detail.
+    </footer>
+  </main>
+</body>
+</html>

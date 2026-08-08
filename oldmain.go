@@ -1,20 +1,31 @@
 package main
 
 import (
-	// "log"
+	"log"
 	"net/http"
 	"fmt"
 	"strconv"
-	"html/template" 
 )
+
+// package main                        ← keyword + special name
+// import "net/http"                   ← keyword + stdlib package path
+// 
+// http                                ← package alias from import
+//   .HandleFunc                       ← stdlib function
+//   .ListenAndServe                   ← stdlib function
+//   .ResponseWriter                   ← stdlib type
+//   .Request                          ← stdlib type
+// 
+// "/"                                 ← your path string
+// ":8080"                             ← your port string
+// w, r, err                           ← YOUR variable names
+// func(...) { ... }                   ← your handler body
+// "Hello, World!"                     ← your response text
+// nil                                 ← language built-in value
 
 
 func notfound(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "404 Page Not LOL Found",http.StatusNotFound)
-}
-
-func notAvailable(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Some issue. Please recheck the code.",http.StatusNotFound)
 }
 
 func wrongMethod(w http.ResponseWriter, r *http.Request) {
@@ -25,16 +36,7 @@ func wrongMethod(w http.ResponseWriter, r *http.Request) {
 // http.HandleFunc("/", ...)           // registers on the *default* global mux
 // http.ListenAndServe(":4000", nil)   // nil = use that default mux
 func home(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFiles("./ui/html/pages/home.tmpl")
-	if err != nil {
-		notAvailable(w, r)
-		return
-	}
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		notAvailable(w, r)
-		return
-	}
+	
 	w.Write([]byte("Hello From Snippetbox!"))
 
 }
@@ -53,7 +55,7 @@ func snippetView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	w.WriteHeader(200)
+	w.WriteHeader(200)//
 	//w.Write([]byte("Viewing a valid snippet with id: " + strconv.Itoa(id)))
 	fmt.Fprintf(w, "Viewing a valid snippet with id: %d", id)
 }
@@ -68,4 +70,16 @@ func snippetCreate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(200)
 	w.Write([]byte(`{"message": "Creating a snippet"}`))
+}
+
+func main() {
+	homemux:= http.NewServeMux()
+	homemux.HandleFunc("/{$}", home) // we define what we want the handler to do when the user visits home
+	homemux.HandleFunc("/snippet/view", snippetView)
+	homemux.HandleFunc("/snippet/create", snippetCreate)
+	log.Println("Starting server on :4000")
+	err := http.ListenAndServe(":4000", homemux)
+	
+	log.Fatal(err)
+	
 }
