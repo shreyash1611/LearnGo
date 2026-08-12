@@ -26,11 +26,9 @@ func main() {
 	// Bind port and serve forever (BLOCKS — code below only runs if listen fails).
 	// handler = your mux. Returns error only if the server fails to start / crashes out.
 	err := http.ListenAndServe(":4000", homemux)
-	if err == nil {
-		fmt.Println("Server started successfully") // normally never reached; ListenAndServe blocks
-	} else {
-		fmt.Println("Server started with error: ", err)
-		os.Exit(1)
+	if err != nil {
+		
+		log.Fatal(err)
 	}
 
 	// log.Fatal(v ...any)  →  logs then os.Exit(1)  — common pattern: log.Fatal(err)
