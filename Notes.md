@@ -1,56 +1,86 @@
+# How these files work
+- **SignatureIdea.html** = MAIN go-to (open in browser). Story of a request + what each call does.
+- **Notes.md** (this file) = my short ideas / flashcards.
+- **HTTP-EXPLAINED.md** = longer explanations of the same topics.
+
+---
+
 # IMPORTANT — ListenAndServe blocks
 - `http.ListenAndServe` starts the server and **does not return** under normal use.
 - Any `HandleFunc` / setup lines **below** it in `main` never run.
 - Always: create mux → register routes → then `ListenAndServe`.
-- If you see Go's default `404 page not found` for every URL, you probably registered routes after listen (empty mux).
+- Default `404 page not found` on every URL = routes registered after listen (empty mux).
+- My custom `notfound` text is different — if I see the default wording, handler never ran.
+- Do NOT use `go ListenAndServe` then register routes (race). Book doesn’t need `go` here.
 
-# Handlers- These handlers are designed to work as a functional listener, or a function
+# Handlers
+- Handlers = functions that listen for a matched request and write a response.
+- Client sends request → server on a port → handler runs → response back.
+- `func name(w http.ResponseWriter, r *http.Request)` — no return value; answer goes into `w`.
+- Path like `/` is registered on the mux; that’s when `home` runs (e.g. localhost:4000/).
 
--Like if a Client Sends a Request
-1. Go server listens on the port, handler receives client request
-2. As per the server set up, it sends a response back. 
-3. func name(w http.ResponseWriter, r *http.Request)- follows the syntax where "/" tells where the handler works when called(Home for example for localhost:8000/) 
+# MUX
+- Fancy word for URL router. `HandleFunc(path, handler)` = this address → that function.
+- Same mux, many handlers, different paths. Paths are CASE SENSITIVE.
+- Mux only picks the handler. It does not build the body.
 
-# MUX- Fancy word for URL routers. When using http.HandleFunc, we pass what address the handler serves. 
-1. For the same MUX, we can have multiple handlers explicitly to handle that address, just different pages. THE ROUTE ADDRESS ARE CASE SENSITIVE    
+# NOTE — `/` vs exact paths
+- Bare `"/"` is a subtree / catch-all if you use it that way.
+- `/{$}` = exact home only (Go 1.22+). Better for real 404s.
+- `/snippet/view` = specific static path.
 
+# Query string (`?id=12`)
+- Mux looks at PATH only. `?id=12` is NOT part of the route.
+- Need `=` not `-` → `?id=12` works, `?id-12` does not.
+- `Get("id")` → string. Missing / `?id` / `?id=` → `""` → Atoi fails → 404.
+- Valid view needs a real positive id (book: `err != nil || id < 1`).
 
-# NOTE- Notice how "/" is a root path, where without handling it explicitly, all the pages display the same thing AKA subtree path. "/snippet/view" is a specific static path
+# RESTFUL / methods
+- `r.Method` is GET, POST, PUT, DELETE…
+- Prefer `http.MethodGet` / `http.MethodPost` over raw strings.
+- Wrong method → **405** + `Allow` header, not 404.
+- Unknown path → **404**.
 
+# AUTHOR CRITICAL 1
+- After `WriteHeader` or `Write`, changing headers has no effect for the client.
+- Set all headers you want BEFORE those calls.
 
-# RESTFUL APIS- We have something called read(r.Method) which is an enum of ("GET","POST","PUT","DELETE"). We can check the method that a handler expects, and handle error from here to ensure that we do not mess up the code
+# AUTHOR CRITICAL 2
+- `"POST"` → `http.MethodPost` (same idea, fewer typos, clearer).
 
-# AUTHOR CRITICAL 1: Changing the response header map after a call to w.WriteHeader() or w.Write() will have no effect on the headers that the user receives. You need to make sure that your response header map contains all the headers you want before you call these methods.
+# RESPONSE DATA — auto headers
+- Go may add Date, Content-Length, Content-Type.
+- Fallback sniff; if unsure → `application/octet-stream`.
+- Set Content-Type yourself for JSON/HTML when you care.
+- `http.Error` forces `text/plain` and can wipe your JSON Content-Type.
+- Order: Set Content-Type → WriteHeader → Write.
 
-# AUTHOR CRITICAL 2: We can change certain constants like "POST" a string to "http.MethodPost" and still achieve the same thing. THis makes it less prone to errors, and better documentibility.
+# THE RESPONSE
+1. STATUS — 200, 404, 405…
+2. HEADERS — Content-Type, Allow, Length, Date, Cache-Control…
+3. BODY — what `Write` / `Fprintf` / template `Execute` send
 
+2a — Header map is always `map[string][]string`. `Set` = replace with one value; `Add` = append to the list.
+2b — Header names case-insensitive via Set/Add/Get (canonicalization). Direct map assign skips that.
 
-# RESPONSE DATA- ADDS CONTENT TYPE, DATE, CONTENT LENGTH
-<!-- shreyashchaurasia@shreyashchaurasia-HP-Laptop-14s-dr2xxx:~/Documents/learngo/backend$ curl -i -X "POST"  http://localhost:4000/snippet/create -->
-<!-- HTTP/1.1 200 OK -->
-<!-- Date: Sun, 02 Aug 2026 09:15:08 GMT -->
-<!-- Content-Length: 18 -->
-<!-- Content-Type: text/plain; charset=utf-8 #DEFAULT-application/octet-stream -->
-<!--  -->
-<!-- Creating a snippet -->
-
-# ^ NOTE FOR THE TOPIC ABOVE You should set Content-Type yourself when you care about the type (JSON, HTML forms, etc.). Sniffing is a fallback for demos/plain text.-
-<!-- w.Header().Set("Content-Type", "text/plain; charset=utf-8") -->
-<!-- w.Write([]byte("Creating a snippet")) -->
-<!-- Order still matters: set Content-Type
- before Write / WriteHeader. -->
-
-
-# THE RESPONSE- 
-1. STATUS- 
-2. HEADERS- CONTENTS TYPES, ALLOW, LENGTH, DATE, CACHE-CONTROL ETC ARE HEADERS TO DECIDE IMP INFO
-3. BODY- RESPONSE WRITES ARE DONE HERE
-
-2a- Headers are map of string vectors or rather header := map string[]. add adds as a new value to the key, whereas set makes it all in 1 string and adds as is. 
-2b.HTTP treats header names as case-insensitive: content-type, Content-Type, CONTENT-TYPE-Those are the same header. But a Go map is case-sensitive — "content-type" and "Content-Type" would be two different keys if nothing cleaned them up.Canocalization basically standardises it.
-
+# Templates (CRITICAL)
+- HTML on disk → Go ParseFiles → ExecuteTemplate into `w`. Not giant HTML strings in Go.
+- **`define`** = SAVE a clip under a name (does not show anything alone).
+- **`template "name"`** = PASTE that named clip **here**.
+- `base.tmpl` = shared layout (holes for title/nav/main). Page files like `home.tmpl` / later `view.tmpl` = only that page’s plugs.
+- `nav.tmpl` = shared partial; also just a `define "nav"`.
+- **CRITICAL:** each handler ParseFiles only `base` + `nav` + **that page’s** tmpl. Never dump every page into one ParseFiles.
+- If `home.tmpl` and `view.tmpl` both `define "title"` in the **same** ParseFiles → **last one wins** (silent overwrite). Wrong title, no loud “duplicate” error.
+- Not parsing `view.tmpl` inside `home()` is **correct** — home doesn’t need it.
+- Missing `define` that `base` tries to `{{template}}` → **ExecuteTemplate error**.
+- Missing/wrong file path → **ParseFiles error**.
+- Go does not pick `home.tmpl` by magic: `main` maps `/` → `home()`; `home()` lists the files.
+- `ExecuteTemplate(w, "base", nil)` — start at `"base"`; `nil` = no data yet; returns only `error`.
+- cwd-relative paths; run from `backend/`. `href="/"` → same host:port (no :4000 in HTML).
+- Requests are **not** always GET — check `r.Method` when it matters.
+- Deep dive: SignatureIdea.html → “Deep dive: HTML templates”.
 
 # STRUCTURING THE FILES
-- We split the app top-down: `cmd/` = runnable programs, `internal/` = private project packages.
-- `internal` is special in Go: packages under it can ONLY be imported by code inside the parent of that `internal` folder (for us: inside `backend/` / our module). Outside projects cannot import them.
-- Same-folder files in `package main` (e.g. `main.go` + `handlers.go`) see each other automatically — run with `go run .`, not `go run main.go`.
+- Top-down: `cmd/` = runnable apps, `internal/` = private packages.
+- `internal` = special folder name (not a language keyword). Only code under parent of `internal` (our `backend/`) can import it. Outsiders can’t.
+- Same `package main` folder: `main.go` + `handlers.go` — run `go run .` or `go run ./cmd/web`, not only `go run main.go`.

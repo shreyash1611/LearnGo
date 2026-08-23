@@ -1,12 +1,30 @@
-# HTTP explained (companion to Notes.md)
+# HTTP explained
 
-Your own short notes live in [`Notes.md`](Notes.md). This file expands those same topics with more explanation.
+Longer explanations for topics in [`Notes.md`](Notes.md).  
+**Main go-to (story + functions):** open [`SignatureIdea.html`](SignatureIdea.html) in a browser.
+
+| File | Role |
+|------|------|
+| SignatureIdea.html | Main guide — read this first |
+| Notes.md | Your short ideas |
+| HTTP-EXPLAINED.md | This file — deeper “why” |
+
+---
+
+## ListenAndServe blocks (see Notes: IMPORTANT)
+
+`ListenAndServe` binds the port and loops forever. Lines **below** it in `main` do not run.
+
+Wrong: listen first, then `HandleFunc` → empty mux → Go’s default `404 page not found`.  
+Right: mux → register all routes → `ListenAndServe` last.
+
+Your custom `notfound` says something like “404 Page Not LOL Found”. Default wording means the handler never ran.
+
+`go ListenAndServe` then register = race. Don’t. No need for goroutines here; the book doesn’t teach that in this chapter.
 
 ---
 
 ## Handlers (see Notes: Handlers)
-
-A handler is a function Go calls when a request matches a route.
 
 ```go
 func home(w http.ResponseWriter, r *http.Request)
@@ -14,125 +32,164 @@ func home(w http.ResponseWriter, r *http.Request)
 
 | Piece | Role |
 |-------|------|
-| `w` | Response writer — you send status, headers, body through this |
-| `r` | Incoming request — method, path, headers, body |
-| return type | None. The “answer” is written to `w`, not returned |
+| `w` | Write status, headers, body |
+| `r` | Read method, path, query, body |
+| return | None — reply is written to `w` |
 
-Flow: client request → server → mux picks handler → handler writes response.
+Flow: client → server → mux picks handler → handler writes response.
 
 ---
 
 ## Mux / router (see Notes: MUX)
 
-Mux = URL router. It only chooses **which handler** runs. It does not write the body.
+Mux only chooses **which** handler runs.
 
-- Register: `mux.HandleFunc("/snippet/view", snippetView)`
 - Paths are case-sensitive
-- Bare `"/"` is a **subtree / catch-all** (as in your Notes)
-- `/{$}` (Go 1.22+) matches **only** exact `/` — better when you want real 404s for unknown paths
-
-| Situation | Status |
-|-----------|--------|
-| No route matches | **404** (mux, if `/` is not a catch-all) |
-| Route exists, wrong method | **405** + usually `Allow` header |
+- Bare `"/"` can be a catch-all; `/{$}` is exact `/` only (Go 1.22+)
+- Unknown path → **404**; wrong method on a known path → **405** + `Allow`
 
 ---
 
-## Methods (see Notes: RESTFUL APIS)
+## Query string (see Notes: Query string)
 
-`r.Method` is `"GET"`, `"POST"`, etc. Prefer `http.MethodGet`, `http.MethodPost` (your Author Critical 2).
+URL parts:
 
-Wrong method → set `Allow`, then `WriteHeader(405)`, then write body. Prefer that over sending **404**.
+```text
+http://localhost:4000/snippet/view?id=12
+       └──── host ────┘└─── path ────┘└query┘
+```
+
+Mux matches **path**. Query is read in the handler:
+
+```go
+r.URL.Query().Get("id")  // string; "" if missing / empty
+strconv.Atoi(...)        // string → int + error
+```
+
+Must use `id=12` (`=`). `id-12` is not “id equals 12”.  
+`?id`, `?id=`, missing → empty → treat as 404 for view.
+
+---
+
+## Methods (see Notes: RESTFUL)
+
+Prefer `http.MethodGet` / `http.MethodPost`.  
+Wrong method → headers first (`Allow`), then `WriteHeader(405)`, then body.
 
 ---
 
 ## Response = status + headers + body (see Notes: THE RESPONSE)
 
 ```
-STATUS   → 200 OK / 404 / 405 …
-HEADERS  → labels about the body (Content-Type, Allow, Date…)
-BODY     → the actual content (text, JSON, HTML)
+STATUS   → 200 / 404 / 405 …
+HEADERS  → Content-Type, Allow, Date…
+BODY     → text / JSON / HTML from template
 ```
 
-**Author Critical 1:** set all headers **before** `WriteHeader` or `Write`. After either runs, header changes are ignored by the client.
+**Author Critical 1:** set headers **before** `WriteHeader` or `Write`.
 
-Order: `Header().Set(...)` → `WriteHeader(code)` → `Write(body)`.
+`Set` vs `Add`: map is always `map[string][]string`. `Set` replaces; `Add` appends.  
+`Set`/`Get`/… canonicalize names (`content-type` → `Content-Type`).
 
 ---
 
 ## Auto headers & Content-Type (see Notes: RESPONSE DATA)
 
-Go often adds `Date`, `Content-Length`, and `Content-Type` for you.
-
-If you don’t set `Content-Type`, Go sniffs the body (`DetectContentType`). If unsure → `application/octet-stream`. Your curl showed `text/plain` for a normal sentence — expected.
-
-Set it yourself when it matters:
-
-```go
-w.Header().Set("Content-Type", "application/json; charset=utf-8")
-```
-
-Note: `http.Error` forces `text/plain` and can overwrite a JSON `Content-Type` you set earlier.
+Go may add `Date`, `Content-Length`, `Content-Type` (sniff). Prefer setting `Content-Type` yourself.  
+`http.Error` forces `text/plain`.
 
 ---
 
-## Header map (see Notes: 2a / 2b)
+## Templates — CRITICAL (see Notes: Templates)
 
-Type is always:
+**Main go-to for this topic:** [`SignatureIdea.html`](SignatureIdea.html) → Deep dive: HTML templates.
 
-```go
-map[string][]string
-```
+### Idea
 
-| Method | Effect |
-|--------|--------|
-| `Set` | Replace that key’s list with **one** value |
-| `Add` | Append another value to the list |
-| `Del` | Remove the key |
-| `Get` | First value as `string` |
-| `Values` | Full `[]string` |
+Don’t hardcode full HTML in Go. Store `.tmpl` files; Go parses them and writes the result into `w` (same as body via `Write`, but assembled from files).
 
-**Canonicalization:** `Set`/`Add`/`Get`/… normalize names (`content-type` → `Content-Type`), so those APIs are case-insensitive. Direct assign `w.Header()["X-Foo"] = ...` skips that (rarely needed).
+### `define` vs `template` (lowest level)
 
-Request headers → `r.Header`. Response headers → `w.Header()`.
+| Action | Job | Analogy |
+|--------|-----|---------|
+| `{{define "title"}}Home{{end}}` | **Save** clip named `"title"` | `title = "Home"` |
+| `{{template "title" .}}` | **Paste** that clip here | `print(title)` |
 
----
+`define` alone shows nothing. `template` is what inserts into the output.
 
-## Project layout & `internal` (see Notes: STRUCTURING THE FILES)
+### File roles
 
-Typical shape for this project:
+| File | Role |
+|------|------|
+| `base.tmpl` | Shared layout; `define "base"`; pastes title / nav / main |
+| `partials/nav.tmpl` | Shared nav; `define "nav"` |
+| `pages/home.tmpl` | Home only; `define "title"` + `define "main"` |
+| later `pages/view.tmpl` | View only; its own `"title"` + `"main"` |
+
+### CRITICAL — one page per ParseFiles
+
+After `ParseFiles`, all `define` names live in **one bag**.
 
 ```text
-backend/                 ← module root (go.mod → module learngo)
-  cmd/
-    web/                 ← package main; go run ./cmd/web
-      main.go
-      handlers.go
-  internal/              ← private packages (when the book adds them)
-    models/
+home()  → ParseFiles(base, nav, home.tmpl)     // OK
+view()  → ParseFiles(base, nav, view.tmpl)     // OK
+
+BAD: home() ParseFiles(..., home.tmpl, view.tmpl)
+     both define "title" → last file wins (silent overwrite)
 ```
 
-| Folder | Role |
-|--------|------|
-| `cmd/web` | The app you run (`main`) |
-| `internal/...` | Shared code only **this** project should import |
+Not loading `view.tmpl` inside `home()` is correct.
 
-**Go rule:** any package under `internal` can only be imported by code in the **parent** of that `internal` directory (here: under `backend/`). Other modules/projects cannot `import "learngo/internal/..."`.
+| Situation | Result |
+|-----------|--------|
+| `base` pastes `"title"` but no `define "title"` in the set | `ExecuteTemplate` error |
+| Wrong/missing file path | `ParseFiles` error |
+| Two `"title"` defines in same ParseFiles | Last wins — wrong page title possible |
+| `view.tmpl` on disk but not in `home`’s files | Fine |
 
-```text
-other projects  --✗-->  learngo/internal/...
-cmd/web         --✓-->  learngo/internal/...
+### Handler wiring (no magic)
+
+```go
+// main.go — URL → Go function
+homemux.HandleFunc("/{$}", home)
+
+// home() — which files to load; start render at "base"
+tmpl, err := template.ParseFiles(base, homePage, nav)
+err = tmpl.ExecuteTemplate(w, "base", nil)  // error only; nil data for now
 ```
 
-Also: `main.go` + `handlers.go` are one package — use `go run .` from `cmd/web` (or `go run ./cmd/web` from `backend/`).
+Go does not choose `home.tmpl` because of the filename. **You** listed it inside `home`.
+
+### cwd / links / methods
+
+- Paths relative to **cwd** → run from `backend/`: `go run ./cmd/web`
+- `href="/"` → same host:port as the address bar (no `:4000` in HTML)
+- Typing a URL is often GET — **not always**. Forms/`curl` can POST etc. Check `r.Method` when needed.
+
+Don’t `w.Write` extra text after a successful `ExecuteTemplate` unless you want junk after `</html>`.
 
 ---
 
-## Handy curls
+## Project layout & `internal` (see Notes: STRUCTURING)
+
+```text
+backend/                 ← go.mod (module learngo)
+  cmd/web/               ← package main
+  ui/html/pages/         ← templates
+  internal/              ← private packages (later)
+```
+
+`internal` = special **directory name**, not a language keyword. Only code under its parent (`backend/`) may import it.
+
+`go run main.go` alone misses `handlers.go`. Use `go run ./cmd/web` from `backend/` or `go run .` from `cmd/web`.
+
+---
+
+## Handy commands
 
 ```bash
 cd backend && go run ./cmd/web
 curl -i http://localhost:4000/
-curl -i http://localhost:4000/snippet/view
+curl -i 'http://localhost:4000/snippet/view?id=12'
 curl -i -X POST http://localhost:4000/snippet/create
 ```

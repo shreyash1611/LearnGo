@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SignatureIdea — what your Go calls actually do</title>
+  <title>SignatureIdea — main go-to</title>
   <style>
     :root {
       --ink: #1c1917;
@@ -12,6 +12,7 @@
       --paper: #fafaf9;
       --card: #ffffff;
       --accent: #0f766e;
+      --warn: #9a3412;
     }
     * { box-sizing: border-box; }
     body {
@@ -23,10 +24,38 @@
       background: var(--paper);
     }
     main {
-      max-width: 38rem;
+      max-width: 42rem;
       margin: 0 auto;
       padding: 2.5rem 1.25rem 4rem;
     }
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.6rem;
+    }
+    pre {
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.85rem 1rem;
+      overflow-x: auto;
+      margin: 0 0 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin: 0 0 1rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.4rem 0.5rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; }
     h1 {
       font-size: 1.75rem;
       font-weight: 600;
@@ -36,8 +65,18 @@
     .lede {
       color: var(--muted);
       font-size: 1.05rem;
-      margin: 0 0 2rem;
+      margin: 0 0 1rem;
     }
+    .roles {
+      font-size: 0.95rem;
+      color: var(--muted);
+      margin: 0 0 2rem;
+      padding: 0.85rem 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .roles p { margin: 0 0 0.35rem; }
+    .roles p:last-child { margin: 0; }
     h2 {
       font-size: 1.15rem;
       font-weight: 600;
@@ -54,23 +93,16 @@
       padding: 0.85rem 1rem;
       margin: 1.25rem 0;
     }
+    .callout.warn { border-left-color: var(--warn); }
     .callout p { margin: 0; }
     .name {
       font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
       font-size: 0.92em;
       color: var(--accent);
     }
-    dl {
-      margin: 0;
-    }
-    dt {
-      font-weight: 600;
-      margin-top: 1.1rem;
-    }
-    dd {
-      margin: 0.25rem 0 0;
-      color: var(--muted);
-    }
+    dl { margin: 0; }
+    dt { font-weight: 600; margin-top: 1.1rem; }
+    dd { margin: 0.25rem 0 0; color: var(--muted); }
     footer {
       margin-top: 2.5rem;
       padding-top: 1rem;
@@ -78,119 +110,349 @@
       font-size: 0.95rem;
       color: var(--muted);
     }
+    footer a { color: var(--accent); }
   </style>
 </head>
 <body>
   <main>
     <h1>SignatureIdea</h1>
     <p class="lede">
-      Not an API manual. A walk through what happens when someone hits your
-      Snippetbox app — and what each built-in call is doing along the way.
+      Main go-to. A walk through your Snippetbox app — what happens on a request,
+      and what each built-in call is doing.
     </p>
+    <div class="roles">
+      <p><strong>This file</strong> — start here (story + functions).</p>
+      <p><strong>Notes.md</strong> — your short ideas / flashcards.</p>
+      <p><strong>HTTP-EXPLAINED.md</strong> — longer “why” for the same topics.</p>
+    </div>
 
-    <h2>The only rule that keeps confusing you</h2>
-    <p>
-      Every function tells you how to trust it by what it returns.
-    </p>
+    <h2>How to trust a function’s return</h2>
     <ul>
-      <li>Returns <strong>only an error</strong> → if the error is empty (nil), it worked. That’s the whole check. (<span class="name">Execute</span> is like this.)</li>
-      <li>Returns <strong>a value and an error</strong> → check the error, then decide if the value is acceptable. (<span class="name">Atoi</span> is like this.)</li>
-      <li>Returns <strong>nothing</strong> → it just does a side job: set a header, register a route, print a log line.</li>
+      <li>Returns <strong>only an error</strong> → nil means success. (<span class="name">Execute</span>, often <span class="name">ListenAndServe</span>)</li>
+      <li>Returns <strong>value + error</strong> → check error, then your rules on the value. (<span class="name">Atoi</span>, <span class="name">ParseFiles</span>)</li>
+      <li>Returns <strong>nothing</strong> → side job only. (<span class="name">HandleFunc</span>, <span class="name">Set</span>, <span class="name">WriteHeader</span>)</li>
     </ul>
 
-    <h2>Act 1 — Your program wakes up</h2>
+    <h2>Act 1 — Program wakes up</h2>
     <p>
-      In <span class="name">main</span>, you build a router with
-      <span class="name">NewServeMux</span>. That gives you an empty
-      “phone book” of paths.
+      <span class="name">NewServeMux</span> gives an empty path → handler phone book.
+      <span class="name">HandleFunc</span> adds entries. It returns nothing.
+    </p>
+    <div class="callout warn">
+      <p>
+        <strong>Important:</strong> register every route <em>before</em>
+        <span class="name">ListenAndServe</span>. That call opens port 4000 and
+        <strong>blocks forever</strong>. Lines below it in <span class="name">main</span>
+        never run. Empty mux → Go’s default “404 page not found” (not your custom message).
+        Don’t fix this with <span class="name">go ListenAndServe</span> then register — race.
+      </p>
+    </div>
+    <p>
+      <span class="name">log.Println</span> talks to the terminal.
+      <span class="name">log.Fatal</span> logs and exits.
     </p>
     <p>
-      <span class="name">HandleFunc</span> adds entries to that book:
-      “when the path is this, call that function.” It doesn’t answer browsers
-      itself. It returns nothing.
-    </p>
-    <p>
-      <span class="name">ListenAndServe</span> opens the door on port 4000
-      and waits forever. You only get an error back if the door won’t open
-      (port busy, etc.). <span class="name">log.Println</span> is just you
-      talking to the terminal; <span class="name">log.Fatal</span> talks
-      and then kills the program.
+      Run from <span class="name">backend/</span>:
+      <span class="name">go run ./cmd/web</span>
+      so both <span class="name">main.go</span> and <span class="name">handlers.go</span> compile,
+      and template paths resolve.
     </p>
 
     <h2>Act 2 — A request arrives</h2>
     <p>
-      Someone visits a URL. Go fills in <span class="name">r</span> (the request)
-      and gives you <span class="name">w</span> (the blank reply form).
+      Browser hits a URL. Go gives you <span class="name">r</span> (request) and
+      <span class="name">w</span> (blank reply).
     </p>
     <p>
-      The mux looks at the <strong>path only</strong>
-      (<span class="name">/snippet/view</span>). Everything after
-      <strong>?</strong> is ignored by the router. That’s why you never
-      registered <span class="name">id</span> on the mux.
+      Mux matches the <strong>path only</strong>
+      (<span class="name">/snippet/view</span>). Query after
+      <strong>?</strong> is ignored by the router.
     </p>
     <p>
-      Your handler runs. <span class="name">r.Method</span> is a plain string
-      field — GET, POST, and so on. No function call.
+      <span class="name">r.Method</span> is a string field (GET, POST…).
+      Prefer comparing to <span class="name">http.MethodGet</span> /
+      <span class="name">http.MethodPost</span>.
     </p>
     <p>
-      For the id, you ask the URL’s query string:
-      <span class="name">r.URL.Query().Get("id")</span>.
-      That always gives a string. Missing id → empty string, not an error.
-      Then <span class="name">Atoi</span> tries to turn that string into a
-      number. Bad text → error. Good number that’s still useless (zero,
-      negative) → you reject it yourself.
+      Id from query: <span class="name">r.URL.Query().Get("id")</span> → string.
+      Use <span class="name">?id=12</span> (equals). Missing / empty →
+      <span class="name">""</span>. Then <span class="name">Atoi</span> → int + error.
+      Bad or non‑positive id → your <span class="name">notfound</span> (404).
     </p>
 
     <h2>Act 3 — You write the reply</h2>
-    <p>
-      Think of the reply as a package:
-    </p>
     <ol>
-      <li><strong>Labels on the box</strong> — headers via <span class="name">w.Header().Set(...)</span></li>
-      <li><strong>Stamp</strong> — status via <span class="name">WriteHeader</span> (200, 404, 405…)</li>
-      <li><strong>What’s inside</strong> — body via <span class="name">Write</span> or <span class="name">Fprintf</span></li>
+      <li><strong>Labels</strong> — <span class="name">w.Header().Set(...)</span></li>
+      <li><strong>Stamp</strong> — <span class="name">WriteHeader</span> (200, 404, 405…)</li>
+      <li><strong>Contents</strong> — <span class="name">Write</span> / <span class="name">Fprintf</span> / template</li>
     </ol>
     <div class="callout">
       <p>
-        Once you stamp or put something in the box, you can’t change the labels
-        anymore. Set headers first.
+        After stamp or first body write, header changes are ignored by the client.
+        Wrong method → 405 + <span class="name">Allow</span>, not 404.
       </p>
     </div>
     <p>
-      <span class="name">http.Error</span> is a shortcut: it stamps an error
-      status and writes a plain-text message for you. Returns nothing.
-      It also forces the content type to plain text — so don’t expect JSON
-      after calling it.
+      Header map is always string → list of strings.
+      <span class="name">Set</span> replaces; <span class="name">Add</span> appends.
+      Those methods canonicalize names (case-insensitive).
+    </p>
+    <p>
+      Go may auto-add Date, Content-Length, Content-Type.
+      Set Content-Type yourself when it matters.
+      <span class="name">http.Error</span> forces plain text.
     </p>
 
-    <h2>Act 4 — Home page with a template</h2>
+    <h2>Act 4 — Home uses templates (short)</h2>
     <p>
-      <span class="name">ParseFiles</span> reads your
-      <span class="name">.tmpl</span> file from disk. You get a template
-      object <em>and</em> an error (file missing, etc.).
+      Instead of stuffing HTML into Go strings, you load
+      <span class="name">.tmpl</span> files and pour them into <span class="name">w</span>.
+      The next section is the long version — read it slowly; this is the hard part.
     </p>
+
+    <h2 id="templates">Deep dive: HTML templates (CRITICAL)</h2>
     <p>
-      <span class="name">Execute</span> pours that template into
-      <span class="name">w</span>. It only returns an error. There is no
-      second “did it look valid?” value — the HTML either got written or it
-      didn’t. That’s why the book only checks <span class="name">err</span>.
+      Goal: understand <span class="name">define</span> vs <span class="name">template</span>,
+      how <span class="name">base</span> / <span class="name">home</span> / <span class="name">nav</span>
+      fit together, and what blows up if two pages both define <span class="name">"title"</span>.
+    </p>
+
+    <h3>0. Requests are not always GET</h3>
+    <p>
+      Typing <span class="name">localhost:4000/</span> or clicking a normal link is usually
+      <strong>GET</strong>. That is not a rule of HTTP. Forms, <span class="name">curl -X POST</span>,
+      etc. can send other methods. Always treat <span class="name">r.Method</span> as “whatever
+      the client sent,” and check it when the handler cares.
+    </p>
+
+    <h3>1. What problem templates solve</h3>
+    <p>
+      Without templates, page HTML lives in Go strings. Messy. With templates:
+    </p>
+    <ul>
+      <li>HTML lives under <span class="name">ui/html/</span></li>
+      <li>Go: read files → combine named pieces → write bytes into <span class="name">w</span></li>
+      <li>Same idea as <span class="name">w.Write</span>: you’re filling the response <strong>body</strong></li>
+    </ul>
+
+    <h3>2. Lowest level — define vs template</h3>
+    <p>
+      Forget files for a moment. Think <strong>named boxes of text</strong>.
+    </p>
+    <div class="callout">
+      <p>
+        <strong>define</strong> = SAVE a clip under a name (does not show anything by itself).<br />
+        <strong>template "name"</strong> = PASTE that clip right here into the output.
+      </p>
+    </div>
+    <pre>{{define "title"}}Home{{end}}
+
+Means: create box "title", put the word Home inside.
+Like:   title = "Home"
+
+
+&lt;title&gt;{{template "title" .}} - Snippetbox&lt;/title&gt;
+
+Means: write &lt;title&gt;, paste box "title", write " - Snippetbox"&lt;/title&gt;.
+Result: &lt;title&gt;Home - Snippetbox&lt;/title&gt;</pre>
+    <p>
+      Analogy to normal code: <span class="name">define</span> ≈ assign a variable;
+      <span class="name">template</span> ≈ print that variable. If you only define and never
+      template, nothing appears. If you template a name that was never defined → error at execute time.
+    </p>
+    <table>
+      <thead>
+        <tr><th>In the file</th><th>Job</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="name">{{define "base"}}…{{end}}</span></td>
+          <td>Save this whole layout as box <strong>base</strong>.</td>
+        </tr>
+        <tr>
+          <td><span class="name">{{define "title"}}Home{{end}}</span></td>
+          <td>Save box <strong>title</strong> = Home.</td>
+        </tr>
+        <tr>
+          <td><span class="name">{{define "main"}}…{{end}}</span></td>
+          <td>Save box <strong>main</strong> = page body HTML.</td>
+        </tr>
+        <tr>
+          <td><span class="name">{{define "nav"}}…{{end}}</span></td>
+          <td>Save box <strong>nav</strong> = navigation HTML.</td>
+        </tr>
+        <tr>
+          <td><span class="name">{{template "nav" .}}</span></td>
+          <td>Paste box <strong>nav</strong> here.</td>
+        </tr>
+        <tr>
+          <td><span class="name">.</span></td>
+          <td>Data from Go. <span class="name">nil</span> for now = no dynamic data.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>3. Your three files — who saves, who pastes</h3>
+    <ul>
+      <li><span class="name">base.tmpl</span> — defines <strong>base</strong> (the frame). It <em>pastes</em> title, nav, main. Shared style/layout for every page.</li>
+      <li><span class="name">partials/nav.tmpl</span> — only <strong>defines nav</strong>. Shared links.</li>
+      <li><span class="name">pages/home.tmpl</span> — only <strong>defines title + main</strong> for the home page.</li>
+    </ul>
+    <pre>After ParseFiles(base, home, nav), the bag of boxes is:
+
+  "base"  → full HTML skeleton with holes
+  "nav"   → &lt;nav&gt;&lt;a href="/"&gt;Home&lt;/a&gt;&lt;/nav&gt;
+  "title" → Home
+  "main"  → Latest Snippets block
+
+ExecuteTemplate(..., "base", ...):
+  start writing base
+    → hit {{template "title"}} → paste Home
+    → hit {{template "nav"}}   → paste nav
+    → hit {{template "main"}}  → paste main
+  → finished page goes into w → browser</pre>
+    <p>
+      Later you’ll add <span class="name">view.tmpl</span> the same way as home:
+      its own <span class="name">define "title"</span> and <span class="name">define "main"</span>,
+      still using the same <span class="name">base</span> + <span class="name">nav</span>.
+    </p>
+
+    <h3>4. CRITICAL — two pages both defining "title"</h3>
+    <p>
+      All names from one <span class="name">ParseFiles</span> call share <strong>one bag</strong>.
+      There is only one slot called <span class="name">"title"</span>.
+    </p>
+    <div class="callout warn">
+      <p>
+        If <span class="name">home.tmpl</span> and <span class="name">view.tmpl</span> both
+        <span class="name">define "title"</span> and you parse <strong>both</strong> into the same
+        <span class="name">files</span> array, the <strong>last file wins</strong>. Silent overwrite.
+        You may show the wrong title. Go does not always scream “duplicate define.”
+      </p>
+    </div>
+    <pre>CORRECT (book style) — one page per handler:
+
+  home() → ParseFiles(base, nav, home.tmpl)
+  view() → ParseFiles(base, nav, view.tmpl)
+
+WRONG for home():
+
+  ParseFiles(base, nav, home.tmpl, view.tmpl)
+  → both define "title" / "main" → last one overwrites</pre>
+    <p>
+      <strong>Not</strong> parsing <span class="name">view.tmpl</span> inside <span class="name">home()</span>
+      is correct. Home does not need view’s boxes. Files sitting on disk do nothing until
+      <span class="name">ParseFiles</span> reads them for that request.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Situation</th><th>What happens</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>base pastes "title" but no define "title" in the set</td>
+          <td><span class="name">ExecuteTemplate</span> returns an error → your notAvailable</td>
+        </tr>
+        <tr>
+          <td>File path wrong / missing</td>
+          <td><span class="name">ParseFiles</span> returns an error</td>
+        </tr>
+        <tr>
+          <td>Two defines of "title" in same ParseFiles</td>
+          <td>Last wins — wrong content possible, often no loud duplicate error</td>
+        </tr>
+        <tr>
+          <td>view.tmpl exists but not in home’s files list</td>
+          <td>Fine — ignored for this request</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>5. How Go “knows” home (it doesn’t by filename)</h3>
+    <pre>main.go:
+  HandleFunc("/{$}", home)     // URL "/" → run function home
+
+handlers.go home():
+  ParseFiles(base, home.tmpl, nav)   // YOU listed these files
+  ExecuteTemplate(w, "base", nil)    // start at box "base"</pre>
+    <p>
+      The word Home in the browser tab comes from <span class="name">define "title"</span>
+      in <span class="name">home.tmpl</span>, not from the Go function name. The function name
+      <span class="name">home</span> is only tied to the route because <span class="name">main</span>
+      registered it.
+    </p>
+
+    <h3>6. What the handler does (line by line)</h3>
+    <pre>files := []string{
+    "./ui/html/base.tmpl",
+    "./ui/html/pages/home.tmpl",
+    "./ui/html/partials/nav.tmpl",
+}
+tmpl, err := template.ParseFiles(files...)
+err = tmpl.ExecuteTemplate(w, "base", nil)</pre>
+    <p><strong>ParseFiles(filenames ...string) (*Template, error)</strong></p>
+    <ul>
+      <li>Opens each path (cwd-relative).</li>
+      <li>Runs every <span class="name">define</span> → fills the bag of boxes.</li>
+      <li>Missing file → error. Do <span class="name">log.Print(err)</span>.</li>
+    </ul>
+    <p><strong>ExecuteTemplate(w, "base", nil) error</strong></p>
+    <ul>
+      <li><span class="name">w</span> — already a response pipe from the server; this writes HTML into it.</li>
+      <li><span class="name">"base"</span> — start at that named box (prefer this over plain Execute).</li>
+      <li><span class="name">nil</span> — no dynamic data yet.</li>
+      <li>Only returns <span class="name">error</span>. nil means the page was written.</li>
+    </ul>
+    <p>
+      <span class="name">w</span> is not “empty until Write.” Every successful
+      <span class="name">ExecuteTemplate</span> is already sending body bytes through
+      <span class="name">w</span>. A later <span class="name">w.Write("Hello…")</span> only appends junk after &lt;/html&gt;.
+    </p>
+
+    <h3>7. cwd, links, port</h3>
+    <ul>
+      <li>Run from <span class="name">backend/</span>: <span class="name">go run ./cmd/web</span> so <span class="name">./ui/...</span> resolves.</li>
+      <li><span class="name">href="/"</span> means “same site, path /”. Browser already on localhost:4000 → hover shows that. No port in the tmpl file.</li>
+    </ul>
+
+    <div class="callout">
+      <p>
+        <strong>One breath:</strong> define = save clip; template = paste clip;
+        base = layout that pastes; each page tmpl = that page’s title/main;
+        ParseFiles only base+nav+that page or titles overwrite; ExecuteTemplate("base") writes into w.
+      </p>
+    </div>
+
+    <h2>Project shape (short)</h2>
+    <p>
+      <span class="name">cmd/web</span> = app you run.
+      <span class="name">ui/</span> = templates.
+      <span class="name">internal/</span> = private packages (special folder name;
+      only code under its parent may import them — not a language keyword).
     </p>
 
     <h2>Pocket glossary</h2>
     <dl>
       <dt>w — ResponseWriter</dt>
-      <dd>The reply you’re building for the client.</dd>
+      <dd>Reply you’re building.</dd>
       <dt>r — Request</dt>
-      <dd>What the client sent (method, path, query, body).</dd>
+      <dd>What the client sent.</dd>
       <dt>mux — ServeMux</dt>
       <dd>Path → handler phone book.</dd>
-      <dt>Template</dt>
-      <dd>Parsed HTML file ready to fill and send.</dd>
+      <dt>define</dt>
+      <dd>Save a clip of HTML under a name (shows nothing alone).</dd>
+      <dt>template "name"</dt>
+      <dd>Paste that named clip into the output here.</dd>
+      <dt>Template set / bag</dt>
+      <dd>All defines from one ParseFiles — one slot per name; last wins if duplicated.</dd>
+      <dt>cwd</dt>
+      <dd>Directory you ran the command from — controls relative file paths.</dd>
     </dl>
 
     <footer>
-      Open this file in a browser for easy reading.
-      Pair with Notes.md and HTTP-EXPLAINED.md when you want more detail.
+      Companion files in the same folder:
+      <a href="Notes.md">Notes.md</a> ·
+      <a href="HTTP-EXPLAINED.md">HTTP-EXPLAINED.md</a>
     </footer>
   </main>
 </body>
